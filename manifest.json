@@ -1,0 +1,9 @@
+{
+  "name":"Frios PA",
+  "short_name":"Frios PA",
+  "start_url":"./",
+  "display":"standalone",
+  "background_color":"#f7f5fa",
+  "theme_color":"#5b2aa8",
+  "icons":[]
+}
