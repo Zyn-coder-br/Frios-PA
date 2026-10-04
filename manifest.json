@@ -1,9 +1,1 @@
-{
-  "name":"Frios PA",
-  "short_name":"Frios PA",
-  "start_url":"./",
-  "display":"standalone",
-  "background_color":"#f7f5fa",
-  "theme_color":"#5b2aa8",
-  "icons":[]
-}
+{"name":"Frios PA","short_name":"Frios PA","start_url":"./","display":"standalone","background_color":"#e8f4ff","theme_color":"#2e7dd1","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
