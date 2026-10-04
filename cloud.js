@@ -57,7 +57,7 @@ async function uploadFriosPhoto(photo){
   }catch(e){console.warn(e);return photo}
 }
 async function cloudSaveProduct(){
-  const name=$('fName').value.trim(),ean=$('fEan').value.trim(),date=$('fDate').value;
+  const name=$('fName').value.trim(),ean=$('fEan').value.replace(/\D/g,'').trim(),date=$('fDate').value;
   const tag=$('fTag').value==='custom'?Number($('fCustomTag').value):Number($('fTag').value);
   const location=$('fLocation').value.trim(),plu=$('fPlu').checked;
   let photo=window.pendingProductPhoto||'';
@@ -66,7 +66,7 @@ async function cloudSaveProduct(){
     let dupQuery=friosSB.from('products').select('id,name,ean,expiration_date').eq('active',true).eq('ean',ean);
     if(editingId && editingId!=='new') dupQuery=dupQuery.neq('id',editingId);
     const dup=await dupQuery.limit(1);
-    if(dup.error){console.error(dup.error);uiAlert('Não foi possível validar o EAN agora. Tente novamente.','Validação do produto');return}
+    if(dup.error){console.error(dup.error);uiAlert('Não foi possível validar o código de barras agora. Verifique sua conexão e tente novamente.','Validação do produto');return}
     if(dup.data?.length){
       const d=dup.data[0];
       uiAlert(`O EAN ${ean} já está cadastrado no produto “${d.name}”. Não é permitido cadastrar o mesmo código de barras em mais de um produto ativo.`,`EAN já cadastrado`);
@@ -82,10 +82,22 @@ async function cloudSaveProduct(){
   editingId=null; window.pendingProductPhoto=''; await cloudLoadProducts(); renderProducts();
 }
 async function cloudRemoveSelected(){
-  const ids=products.filter(p=>p.selected).map(p=>p.id); if(!ids.length)return;
-  if(!await uiConfirm(`Remover ${ids.length} produto(s) selecionado(s) definitivamente?`,'Remover produtos'))return;
+  const ids=products.filter(p=>p.selected).map(p=>p.id); if(!ids.length){uiAlert('Marque pelo menos um produto antes de remover.','Remover produtos');return;}
+  if(!await uiConfirm(`Você está prestes a remover ${ids.length} produto(s). Essa ação não poderá ser desfeita.`, 'Remover produtos')) return;
   const {error}=await friosSB.from('products').delete().in('id',ids);
-  if(error){console.error(error);uiAlert('Não foi possível remover os produtos. Verifique as permissões do seu perfil.','Remover produtos');return}
+  if(error){
+    console.error('[FRIOS PA] Erro ao remover:',error);
+    const code=error.code||'ERRO';
+    uiAlert(`O banco de dados recusou a remoção do produto.
+
+Código: ${code}
+
+Se você acabou de atualizar o SQL de permissões, recarregue o aplicativo e tente novamente.`, 'Não foi possível remover');
+    return;
+  }
+  products=products.filter(p=>!ids.includes(p.id));
+  products.forEach(p=>p.selected=false);
+  uiToast(ids.length===1?'Produto removido com sucesso.':`${ids.length} produtos removidos com sucesso.`,'success');
   await cloudLoadProducts(); renderProducts();
 }
 async function cloudMarkPlu(value){

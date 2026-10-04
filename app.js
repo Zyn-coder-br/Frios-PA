@@ -33,6 +33,13 @@ function uiConfirm(message,title='Confirmar ação'){
   });
 }
 function resolveUiConfirm(value){const r=uiConfirmResolver;closeUiLayer();if(r)r(value);}
+/* ============================================================
+   FRIOS PA — BLOQUEIO DE JANELAS NATIVAS
+   Qualquer alert/confirm legado passa pelo padrão visual do app.
+============================================================ */
+window.alert=function(message){ uiAlert(String(message||''), 'Frios PA'); };
+window.confirm=function(message){ return false; };
+
 function uiToast(message,type='info'){
   ensureUiLayer();
   const toast=document.createElement('div');toast.className=`ui-toast ${type}`;toast.innerHTML=`<span>${type==='success'?'✓':type==='error'?'!':'i'}</span><b>${escapeHtml(message)}</b>`;document.body.appendChild(toast);setTimeout(()=>toast.remove(),3200);
