@@ -11,7 +11,7 @@ function cloudMapProduct(r){
 }
 async function cloudLoadProducts(){
   const {data,error}=await friosSB.from('products').select('*').eq('active',true).order('expiration_date',{ascending:true});
-  if(error){console.error(error); alert('Não foi possível carregar os produtos da nuvem.'); return;}
+  if(error){console.error(error); uiAlert('Não foi possível carregar os produtos da nuvem.','Produtos'); return;}
   products=(data||[]).map(cloudMapProduct);
   if(typeof render==='function') render();
 }
@@ -61,26 +61,37 @@ async function cloudSaveProduct(){
   const tag=$('fTag').value==='custom'?Number($('fCustomTag').value):Number($('fTag').value);
   const location=$('fLocation').value.trim(),plu=$('fPlu').checked;
   let photo=window.pendingProductPhoto||'';
-  if(!name||!date||!tag){alert('Preencha descrição, vencimento e tag de trabalho.');return}
+  if(!name||!date||!tag){uiAlert('Preencha descrição, vencimento e tag de trabalho.','Cadastro de produto');return}
+  if(ean){
+    let dupQuery=friosSB.from('products').select('id,name,ean,expiration_date').eq('active',true).eq('ean',ean);
+    if(editingId && editingId!=='new') dupQuery=dupQuery.neq('id',editingId);
+    const dup=await dupQuery.limit(1);
+    if(dup.error){console.error(dup.error);uiAlert('Não foi possível validar o EAN agora. Tente novamente.','Validação do produto');return}
+    if(dup.data?.length){
+      const d=dup.data[0];
+      uiAlert(`O EAN ${ean} já está cadastrado no produto “${d.name}”. Não é permitido cadastrar o mesmo código de barras em mais de um produto ativo.`,`EAN já cadastrado`);
+      return;
+    }
+  }
   photo=await uploadFriosPhoto(photo);
   const payload={name,ean:ean||null,brand:null,photo_url:photo||null,expiration_date:date,work_tag_days:tag,location:location||'Localização não informada',plu_identified:plu,active:true,updated_by:friosUser.id};
   let result;
   if(editingId && editingId!=='new') result=await friosSB.from('products').update(payload).eq('id',editingId).select().single();
   else result=await friosSB.from('products').insert({...payload,created_by:friosUser.id}).select().single();
-  if(result.error){console.error(result.error);alert('Não foi possível salvar o produto na nuvem.');return}
+  if(result.error){console.error(result.error);uiAlert(result.error.code==='23505'?'Este EAN já está cadastrado em outro produto.':'Não foi possível salvar o produto na nuvem.','Salvar produto');return}
   editingId=null; window.pendingProductPhoto=''; await cloudLoadProducts(); renderProducts();
 }
 async function cloudRemoveSelected(){
   const ids=products.filter(p=>p.selected).map(p=>p.id); if(!ids.length)return;
-  if(!confirm(`Remover ${ids.length} produto(s) selecionado(s)?`))return;
-  const {error}=await friosSB.from('products').update({active:false,updated_by:friosUser.id}).in('id',ids);
-  if(error){alert('Não foi possível remover os produtos.');return}
+  if(!await uiConfirm(`Remover ${ids.length} produto(s) selecionado(s) definitivamente?`,'Remover produtos'))return;
+  const {error}=await friosSB.from('products').delete().in('id',ids);
+  if(error){console.error(error);uiAlert('Não foi possível remover os produtos. Verifique as permissões do seu perfil.','Remover produtos');return}
   await cloudLoadProducts(); renderProducts();
 }
 async function cloudMarkPlu(value){
-  const ids=products.filter(p=>p.selected).map(p=>p.id); if(!ids.length){alert('Marque pelo menos um produto.');return}
+  const ids=products.filter(p=>p.selected).map(p=>p.id); if(!ids.length){uiAlert('Marque pelo menos um produto.','PLU');return}
   const {error}=await friosSB.from('products').update({plu_identified:value,updated_by:friosUser.id}).in('id',ids);
-  if(error){alert('Não foi possível atualizar o PLU.');return}
+  if(error){uiAlert('Não foi possível atualizar o PLU.','PLU');return}
   await cloudLoadProducts(); renderProducts();
 }
 
