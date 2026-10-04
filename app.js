@@ -1,40 +1,114 @@
 const K="frios_pa_auth",D="frios_pa_data";
 let products=JSON.parse(localStorage.getItem(D)||"[]");
-products=products.map((p,i)=>({...p,id:p.id||`prod-${i}-${p.ean||"sem-ean"}-${p.date||""}`,location:p.location||"Localização não informada"}));
+products=products.map((p,i)=>({...p,id:p.id||`prod-${i}-${p.ean||"sem-ean"}-${p.date||""}`,location:p.location||"Localização não informada",tag:Number(p.tag)||12,selected:false}));
 let page="home",selectedProductId=null;
+let productFilters={mode:"all",search:"",tag:"all",days:"all"};
+let editingId=null;
 const $=x=>document.getElementById(x);
 const demo={u:"admin",p:"123456",name:"Administrador"};
 function days(d){let n=new Date();n.setHours(0,0,0,0);return Math.ceil((new Date(d+"T00:00:00")-n)/86400000)}
-function persist(){localStorage.setItem(D,JSON.stringify(products))}
+function persist(){localStorage.setItem(D,JSON.stringify(products.map(({selected,...p})=>p)))}
+function fmtDate(d){return new Date(d+"T00:00:00").toLocaleDateString("pt-BR")}
+function isWork(p){let d=days(p.date);return d<=Number(p.tag)&&d>=0}
+function status(p){let d=days(p.date);if(d<0)return ["Vencido","red"];if(d===0)return ["Vence hoje","red"];if(isWork(p))return ["Liberado para trabalho","green"];return ["Aguardando janela",""]}
+function escapeHtml(v){return String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]))}
 function render(){
   let names={home:"Início",products:"Produtos",expiry:"Vencimentos",alerts:"Notificações",more:"Mais"};
   $("title").textContent=names[page];
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.p==page));
   let s=[...products].sort((a,b)=>a.date.localeCompare(b.date));
-  let win=s.filter(p=>days(p.date)<=p.tag&&days(p.date)>=0).length;
+  let win=s.filter(isWork).length;
   if(page==="home"){
     $("content").innerHTML=`<p class="muted">Bom dia, ${demo.name}</p><div class="hero"><small>Produtos cadastrados</small><strong>${s.length}</strong><small>controle atual</small></div><div class="grid"><div class="card"><div class="muted">Vencem hoje</div><div class="metric">${s.filter(p=>days(p.date)==0).length}</div></div><div class="card"><div class="muted">Na janela</div><div class="metric">${win}</div></div><div class="card"><div class="muted">Próximo</div><div class="metric">${s[0]?days(s[0].date):"—"}</div></div><div class="card"><div class="muted">Alertas</div><div class="metric">Ativos</div></div></div><div class="section"><b>Resumo de vencimentos</b><div class="list">${s.slice(0,5).map(card).join("")||'<div class="card muted">Nenhum produto cadastrado.</div>'}</div></div>`;
   }else if(page==="expiry"){
     let selected=products.find(p=>p.id===selectedProductId);
     $("content").innerHTML=`<h2>Vencimentos</h2><p class="muted">Data de vencimento crescente</p>${selected?detail(selected):""}<div class="list">${s.map(card).join("")||'<div class="card muted">Nenhum vencimento cadastrado.</div>'}</div>`;
   }else if(page==="products"){
-    $("content").innerHTML=`<h2>Produtos</h2><button onclick="add()" style="width:100%;padding:14px;border:0;border-radius:14px;background:#2e7dd1;color:white;font-weight:800">Cadastrar produto de teste</button><div class="list">${s.map(card).join("")||'<div class="card muted">Nenhum produto cadastrado.</div>'}</div>`;
+    renderProducts();
   }else if(page==="alerts"){
-    $("content").innerHTML=`<h2>Notificações</h2><div class="card"><b>Resumo diário</b><p class="muted">Nesta V1, a configuração é local. Na próxima etapa será vinculada ao usuário e ao banco em nuvem.</p><input type="time" value="05:00"><br><br><button onclick="alert('Horário salvo')">Salvar configuração</button></div>`;
+    $("content").innerHTML=`<h2>Notificações</h2><div class="card"><b>Resumo diário</b><p class="muted">Nesta V1, a configuração é local. Na próxima etapa será vinculada ao usuário e ao banco em nuvem.</p><input type="time" value="05:00"><br><br><button class="primary-btn" onclick="alert('Horário salvo')">Salvar configuração</button></div>`;
   }else{
-    $("content").innerHTML=`<h2>Mais</h2><div class="card"><b>Conta</b><p class="muted">${demo.name}</p><p class="muted">Autenticação: Local V1</p><p class="muted">Banco em nuvem: próxima etapa</p></div>`
+    $("content").innerHTML=`<h2>Mais</h2><div class="card"><b>Conta</b><p class="muted">${demo.name}</p><p class="muted">Autenticação: Local V1</p><p class="muted">Banco em nuvem: próxima etapa</p></div>`;
   }
 }
-function detail(p){
-  let d=days(p.date),w=d<=p.tag&&d>=0;
-  return `<div class="product-detail"><div class="detail-head"><div class="detail-photo"></div><div><small class="muted">Detalhes do produto</small><h3>${p.name}</h3><span class="pill ${w?"green":""}">${w?"Liberado":"Aguardando janela"}</span></div></div><div class="detail-grid"><div><small>Vencimento</small><b>${new Date(p.date+"T00:00:00").toLocaleDateString("pt-BR")}</b></div><div><small>Dias restantes</small><b>${d>=0?d+" dias":"Vencido"}</b></div><div><small>Tag de trabalho</small><b>${p.tag} dias</b></div><div><small>EAN</small><b>${p.ean||"Não informado"}</b></div></div><div class="location"><small>Localização no setor</small><b>${p.location||"Localização não informada"}</b></div></div>`
+function renderProducts(){
+  let q=productFilters.search.trim().toLowerCase();
+  let arr=[...products].sort((a,b)=>a.date.localeCompare(b.date)).filter(p=>{
+    if(productFilters.mode==="work"&&!isWork(p))return false;
+    if(productFilters.mode==="critical"&&days(p.date)>7)return false;
+    if(productFilters.tag!=="all"&&String(p.tag)!==String(productFilters.tag))return false;
+    let d=days(p.date);
+    if(productFilters.days==="0"&&d!==0)return false;
+    if(productFilters.days==="1-3"&&(d<1||d>3))return false;
+    if(productFilters.days==="4-7"&&(d<4||d>7))return false;
+    if(productFilters.days==="8-15"&&(d<8||d>15))return false;
+    if(productFilters.days==="16+"&&d<16)return false;
+    if(q&&!(`${p.name} ${p.ean||""} ${p.location||""}`.toLowerCase().includes(q)))return false;
+    return true;
+  });
+  let selectedCount=products.filter(p=>p.selected).length;
+  let tags=[...new Set(products.map(p=>Number(p.tag)).filter(Boolean))].sort((a,b)=>a-b);
+  $("content").innerHTML=`
+    <div class="products-title-row"><div><h2>Seus produtos</h2><p class="muted">Filtre por categoria, pesquise por nome ou EAN e controle a validade por tag.</p></div><span class="count-badge">${arr.length} produtos</span></div>
+    <div class="product-toolbar">
+      <div class="product-tabs">
+        <button class="filter-tab ${productFilters.mode==="all"?"active":""}" onclick="setProductMode('all')">Todos</button>
+        <button class="filter-tab ${productFilters.mode==="work"?"active":""}" onclick="setProductMode('work')">Trabalho</button>
+        <button class="filter-tab ${productFilters.mode==="critical"?"active":""}" onclick="setProductMode('critical')">Lista crítica</button>
+      </div>
+      <div class="product-search-row">
+        <label class="search-box"><span class="icon-search"></span><input id="productSearch" value="${escapeHtml(productFilters.search)}" placeholder="Buscar por nome ou EAN..." oninput="productSearch(this.value)"></label>
+        <select onchange="setProductTag(this.value)" aria-label="Filtrar por tag"><option value="all">Todas as tags</option>${tags.map(t=>`<option value="${t}" ${String(productFilters.tag)===String(t)?"selected":""}>Tag ${t} dias</option>`).join("")}</select>
+        <select onchange="setProductDays(this.value)" aria-label="Filtrar por validade"><option value="all">Todas as validades</option><option value="0" ${productFilters.days==="0"?"selected":""}>Vence hoje</option><option value="1-3" ${productFilters.days==="1-3"?"selected":""}>1 a 3 dias</option><option value="4-7" ${productFilters.days==="4-7"?"selected":""}>4 a 7 dias</option><option value="8-15" ${productFilters.days==="8-15"?"selected":""}>8 a 15 dias</option><option value="16+" ${productFilters.days==="16+"?"selected":""}>16+ dias</option></select>
+      </div>
+      <div class="product-actions-row"><label class="select-all"><input type="checkbox" ${arr.length&&arr.every(p=>p.selected)?"checked":""} onchange="toggleAllVisible(this.checked)"> Selecionar tudo</label><span class="selection-info">${selectedCount?selectedCount+" selecionado(s)":""}</span><button class="ghost-btn" onclick="clearProductFilters()">Limpar filtros</button><button class="primary-btn create-btn" onclick="openProductModal()"><span class="plus-icon">+</span> Criar produto</button></div>
+      ${selectedCount?`<div class="bulk-bar"><span>${selectedCount} produto(s) selecionado(s)</span><button onclick="clearSelection()">Desmarcar</button><button class="danger-btn" onclick="removeSelected()">Remover selecionados</button></div>`:""}
+    </div>
+    <div class="product-list">${arr.map(productRow).join("")||`<div class="empty-card"><b>Nenhum produto encontrado</b><span>Altere os filtros ou cadastre um novo produto.</span></div>`}</div>
+    ${editingId?modalHtml():""}`;
 }
-function card(p){
-  let d=days(p.date),w=d<=p.tag&&d>=0;
-  return `<button class="item product-card" onclick="openProduct('${String(p.id).replace(/'/g,"\\'")}')"><div class="thumb"></div><div class="product-main"><b>${p.name}</b><div class="muted">EAN ${p.ean||"não informado"} · ${new Date(p.date+"T00:00:00").toLocaleDateString("pt-BR")}</div><span class="pill ${w?"green":""}">${w?"Liberado":"Aguardando janela"} · Tag ${p.tag}d</span></div><div class="days">${d>=0?d+"d":"Vencido"}</div></button>`
+function productRow(p){
+  let d=days(p.date),[st,cls]=status(p),tag=Number(p.tag)||12;
+  let daysText=d<0?`${Math.abs(d)} dias vencido`:d===0?"Vence hoje":`${d} dias restantes`;
+  return `<div class="product-row ${p.selected?"selected":""}"><input class="row-check" type="checkbox" ${p.selected?"checked":""} onchange="toggleProduct('${escapeHtml(p.id)}',this.checked)"><div class="row-thumb"></div><button class="row-main" onclick="openProduct('${escapeHtml(p.id)}')"><b>${escapeHtml(p.name)}</b><span>EAN ${escapeHtml(p.ean||"não informado")} · Vence ${fmtDate(p.date)}</span><span>${escapeHtml(p.location||"Localização não informada")}</span></button><div class="row-tag"><span>Tag ${tag}d</span><small>${isWork(p)?"Dentro da janela":"Aguardando"}</small></div><div class="row-days ${d<=3?"urgent":d<=7?"attention":""}"><strong>${d<0?"Vencido":d===0?"Hoje":d+"d"}</strong><small>${daysText}</small></div><div class="row-menu"><button title="Editar" onclick="openProductModal('${escapeHtml(p.id)}')">Editar</button><button title="Remover" onclick="removeProduct('${escapeHtml(p.id)}')">Remover</button></div></div>`;
 }
+function modalHtml(){let p=products.find(x=>x.id===editingId)||{name:"",ean:"",date:new Date().toISOString().slice(0,10),tag:12,location:""};let editing=!!products.find(x=>x.id===editingId);return `<div class="modal-backdrop" onclick="closeProductModal(event)"><div class="modal" onclick="event.stopPropagation()"><div class="modal-head"><div><h3>${editing?"Editar produto":"Criar produto"}</h3><p class="muted">Cadastre a validade e a tag de trabalho.</p></div><button class="close-btn" onclick="closeProductModal()">×</button></div><div class="form-grid"><label>Descrição<input id="fName" value="${escapeHtml(p.name)}" placeholder="Nome do produto"></label><label>EAN<input id="fEan" value="${escapeHtml(p.ean)}" inputmode="numeric" placeholder="Código de barras"></label><label>Data de vencimento<input id="fDate" type="date" value="${escapeHtml(p.date)}"></label><label>Tag de trabalho<select id="fTag"><option value="7">7 dias</option><option value="10">10 dias</option><option value="12">12 dias</option><option value="15">15 dias</option><option value="17">17 dias</option><option value="20">20 dias</option><option value="30">30 dias</option><option value="custom">Outro</option></select></label><label id="customTagWrap" class="hidden">Outra tag<input id="fCustomTag" type="number" min="1" value="${Number(p.tag)||12}"></label><label class="full">Localização no setor<input id="fLocation" value="${escapeHtml(p.location)}" placeholder="Ex.: Balcão de frios · Expositor 01"></label></div><div class="modal-foot"><button class="ghost-btn" onclick="closeProductModal()">Cancelar</button><button class="primary-btn" onclick="saveProduct()">Salvar produto</button></div></div></div>`}
+function openProductModal(id=""){
+  editingId=id||"new";
+  renderProducts();
+  setTimeout(()=>{
+    let p=products.find(x=>x.id===id);
+    let tag=p?Number(p.tag):12;
+    let sel=$("fTag");
+    if(sel){
+      let opt=[...sel.options].find(o=>Number(o.value)===tag);
+      if(opt){
+        sel.value=String(tag);
+      }else{
+        sel.value="custom";
+        $("customTagWrap").classList.remove("hidden");
+        $("fCustomTag").value=tag;
+      }
+      sel.onchange=()=>$("customTagWrap").classList.toggle("hidden",sel.value!=="custom");
+    }
+  },0);
+}
+function closeProductModal(e){if(e&&e.target!==e.currentTarget)return;editingId=null;renderProducts()}
+function saveProduct(){let name=$("fName").value.trim(),ean=$("fEan").value.trim(),date=$("fDate").value,tag=$("fTag").value==="custom"?Number($("fCustomTag").value):Number($("fTag").value),location=$("fLocation").value.trim();if(!name||!date||!tag){alert("Preencha descrição, vencimento e tag de trabalho.");return}if(editingId&&editingId!=="new"){let p=products.find(x=>x.id===editingId);Object.assign(p,{name,ean,date,tag,location:location||"Localização não informada"})}else products.push({id:`prod-${Date.now()}`,name,ean,date,tag,location:location||"Localização não informada",selected:false});persist();editingId=null;renderProducts()}
+function removeProduct(id){let p=products.find(x=>x.id===id);if(!p)return;if(confirm(`Remover ${p.name}?`)){products=products.filter(x=>x.id!==id);persist();renderProducts()}}
+function removeSelected(){let n=products.filter(p=>p.selected).length;if(!n)return;if(confirm(`Remover ${n} produto(s) selecionado(s)?`)){products=products.filter(p=>!p.selected);persist();renderProducts()}}
+function toggleProduct(id,v){let p=products.find(x=>x.id===id);if(p)p.selected=v;persist();renderProducts()}
+function toggleAllVisible(v){let q=productFilters.search.trim().toLowerCase();products.forEach(p=>{let d=days(p.date);let ok=(productFilters.mode==="all"||(productFilters.mode==="work"&&isWork(p))||(productFilters.mode==="critical"&&d<=7))&&(productFilters.tag==="all"||String(p.tag)===String(productFilters.tag))&&(productFilters.days==="all"||(productFilters.days==="0"&&d===0)||(productFilters.days==="1-3"&&d>=1&&d<=3)||(productFilters.days==="4-7"&&d>=4&&d<=7)||(productFilters.days==="8-15"&&d>=8&&d<=15)||(productFilters.days==="16+"&&d>=16))&&(!q||`${p.name} ${p.ean||""} ${p.location||""}`.toLowerCase().includes(q));if(ok)p.selected=v});persist();renderProducts()}
+function clearSelection(){products.forEach(p=>p.selected=false);persist();renderProducts()}
+function setProductMode(v){productFilters.mode=v;renderProducts()}
+function setProductTag(v){productFilters.tag=v;renderProducts()}
+function setProductDays(v){productFilters.days=v;renderProducts()}
+function productSearch(v){productFilters.search=v;renderProducts();let el=$("productSearch");if(el){el.focus();el.setSelectionRange(v.length,v.length)}}
+function clearProductFilters(){productFilters={mode:"all",search:"",tag:"all",days:"all"};renderProducts()}
+function detail(p){let d=days(p.date),w=isWork(p);return `<div class="product-detail"><div class="detail-head"><div class="detail-photo"></div><div><small class="muted">Detalhes do produto</small><h3>${escapeHtml(p.name)}</h3><span class="pill ${w?"green":""}">${w?"Liberado para trabalho":"Aguardando janela"}</span></div></div><div class="detail-grid"><div><small>Vencimento</small><b>${fmtDate(p.date)}</b></div><div><small>Dias restantes</small><b>${d>=0?d+" dias":"Vencido"}</b></div><div><small>Tag de trabalho</small><b>${p.tag} dias</b></div><div><small>EAN</small><b>${escapeHtml(p.ean||"Não informado")}</b></div></div><div class="location"><small>Localização no setor</small><b>${escapeHtml(p.location||"Localização não informada")}</b></div></div>`}
+function card(p){let d=days(p.date),w=isWork(p);return `<button class="item product-card" onclick="openProduct('${escapeHtml(p.id)}')"><div class="thumb"></div><div class="product-main"><b>${escapeHtml(p.name)}</b><div class="muted">EAN ${escapeHtml(p.ean||"não informado")} · ${fmtDate(p.date)}</div><span class="pill ${w?"green":""}">${w?"Liberado":"Aguardando janela"} · Tag ${p.tag}d</span></div><div class="days ${d<=3?"urgent-text":""}">${d>=0?d+"d":"Vencido"}</div></button>`}
 function openProduct(id){selectedProductId=id;page="expiry";render();window.scrollTo({top:0,behavior:"smooth"})}
-function add(){let d=new Date();d.setDate(d.getDate()+8);products.push({id:`prod-${Date.now()}`,name:"Produto de teste",ean:"7890000000000",date:d.toISOString().slice(0,10),tag:12,location:"Balcão de Frios — Expositor 01"});persist();render()}
+function add(){openProductModal()}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{page=b.dataset.p;selectedProductId=null;render()});
 $("enter").onclick=()=>{let e=$("err");e.classList.add("hidden");if($("u").value===demo.u&&$("p").value===demo.p){localStorage.setItem(K,"1");$("login").classList.add("hidden");$("app").classList.remove("hidden");render()}else{e.textContent="Usuário/senha incorreta";e.classList.remove("hidden");$("p").focus()}};
 $('out').onclick=()=>{localStorage.removeItem(K);$('app').classList.add('hidden');$('login').classList.remove('hidden')};
