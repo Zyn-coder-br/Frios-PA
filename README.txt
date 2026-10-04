@@ -23,3 +23,25 @@ Produto C:
 Vencimento em 12 dias / TAG 7
 
 Depois abra Vencimentos e confirme que aparecem do vencimento mais próximo para o mais distante.
+
+
+FRIOS PA — VERSÃO CLOUD / SUPABASE
+
+Esta versão usa exclusivamente o Supabase para autenticação e produtos.
+Projeto Supabase: Frios-PA
+URL: https://nomcmgegvdkmqfsiutdd.supabase.co
+
+Login:
+- O e-mail e senha são validados pelo Supabase Auth.
+- Sessão persistente é gerenciada pelo Supabase.
+- O perfil precisa existir em public.profiles e estar active=true.
+- Ramon está configurado como role=admin.
+
+Produtos:
+- Leitura, cadastro, edição, exclusão lógica e PLU usam public.products.
+- Fotos usam o bucket frios-produtos.
+- Alterações são atualizadas em tempo real via Realtime.
+
+IMPORTANTE:
+- Não há mais credencial local admin/123456.
+- A chave usada no navegador é a publishable key do projeto Supabase.

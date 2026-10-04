@@ -19,14 +19,18 @@ async function cloudProfile(){
   if(!friosUser) return null;
   const {data,error}=await friosSB.from('profiles').select('*').eq('id',friosUser.id).single();
   if(error){console.error(error); return null}
-  friosProfile=data; return data;
+  friosProfile=data; window.FRIOS_PROFILE=data; return data;
 }
 async function cloudLogin(){
   const err=$('err'); err.classList.add('hidden');
   let login=$('u').value.trim(); const password=$('p').value;
   if(!login||!password){err.textContent='Informe usuário e senha';err.classList.remove('hidden');return}
   if(!login.includes('@')) login += '@pa.com';
+  const btn=$('enter');
+  const originalText=btn.textContent;
+  btn.disabled=true; btn.textContent='Entrando...';
   const {data,error}=await friosSB.auth.signInWithPassword({email:login,password});
+  btn.disabled=false; btn.textContent=originalText;
   if(error){err.textContent='Usuário/senha incorreta';err.classList.remove('hidden');$('p').focus();return}
   friosUser=data.user; await cloudProfile();
   if(!friosProfile || !friosProfile.active){await friosSB.auth.signOut();err.textContent='Usuário desativado';err.classList.remove('hidden');return}
@@ -85,11 +89,18 @@ window.addEventListener('load', async ()=>{
   $('u').placeholder='E-mail ou usuário';
   $('enter').onclick=cloudLogin;
   $('out').onclick=cloudLogout;
+  $('app').classList.add('hidden');
+  $('login').classList.remove('hidden');
   const {data}=await friosSB.auth.getSession();
   if(data.session){
     friosUser=data.session.user; await cloudProfile();
-    if(friosProfile?.active){$('login').classList.add('hidden');$('app').classList.remove('hidden');await cloudLoadProducts();cloudSubscribe();}
-    else await friosSB.auth.signOut();
+    if(friosProfile?.active){
+      $('login').classList.add('hidden');$('app').classList.remove('hidden');
+      await cloudLoadProducts();cloudSubscribe();
+    } else {
+      await friosSB.auth.signOut();
+      const err=$('err'); err.textContent='Perfil não autorizado ou desativado.'; err.classList.remove('hidden');
+    }
   } else {$('app').classList.add('hidden');$('login').classList.remove('hidden');}
 });
 
@@ -105,3 +116,13 @@ window.fabAction=async function(action){
   if(action==='remove'){await cloudRemoveSelected();return}
   return _fabAction(action);
 };
+
+
+// Mantém o estado da aplicação sincronizado com a sessão do Supabase.
+friosSB.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_OUT') {
+    friosUser=null; friosProfile=null; window.FRIOS_PROFILE=null;
+    $('app').classList.add('hidden');
+    $('login').classList.remove('hidden');
+  }
+});

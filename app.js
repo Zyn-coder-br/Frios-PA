@@ -5,7 +5,7 @@ let page="home",selectedProductId=null;
 let productFilters={mode:"all",search:"",tag:"all",days:"all"};
 let editingId=null;
 const $=x=>document.getElementById(x);
-const demo={u:"admin",p:"123456",name:"Administrador"};
+
 function days(d){let n=new Date();n.setHours(0,0,0,0);return Math.ceil((new Date(d+"T00:00:00")-n)/86400000)}
 function persist(){localStorage.setItem(D,JSON.stringify(products.map(({selected,...p})=>p)))}
 function fmtDate(d){return new Date(d+"T00:00:00").toLocaleDateString("pt-BR")}
@@ -19,7 +19,7 @@ function render(){
   let s=[...products].sort((a,b)=>a.date.localeCompare(b.date));
   let win=s.filter(isWork).length;
   if(page==="home"){
-    $("content").innerHTML=`<p class="muted">Bom dia, ${demo.name}</p><div class="hero"><small>Produtos cadastrados</small><strong>${s.length}</strong><small>controle atual</small></div><div class="grid"><div class="card"><div class="muted">Vencem hoje</div><div class="metric">${s.filter(p=>days(p.date)==0).length}</div></div><div class="card"><div class="muted">Na janela</div><div class="metric">${win}</div></div><div class="card"><div class="muted">Próximo</div><div class="metric">${s[0]?days(s[0].date):"—"}</div></div><div class="card"><div class="muted">Alertas</div><div class="metric">Ativos</div></div></div><div class="section"><b>Resumo de vencimentos</b><div class="list">${s.slice(0,5).map(card).join("")||'<div class="card muted">Nenhum produto cadastrado.</div>'}</div></div>`;
+    $("content").innerHTML=`<p class="muted">Controle de vencimentos e operação da equipe</p><div class="hero"><small>Produtos cadastrados</small><strong>${s.length}</strong><small>controle atual</small></div><div class="grid"><div class="card"><div class="muted">Vencem hoje</div><div class="metric">${s.filter(p=>days(p.date)==0).length}</div></div><div class="card"><div class="muted">Na janela</div><div class="metric">${win}</div></div><div class="card"><div class="muted">Próximo</div><div class="metric">${s[0]?days(s[0].date):"—"}</div></div><div class="card"><div class="muted">Alertas</div><div class="metric">Ativos</div></div></div><div class="section"><b>Resumo de vencimentos</b><div class="list">${s.slice(0,5).map(card).join("")||'<div class="card muted">Nenhum produto cadastrado.</div>'}</div></div>`;
   }else if(page==="expiry"){
     let selected=products.find(p=>p.id===selectedProductId);
     $("content").innerHTML=`<h2>Vencimentos</h2><p class="muted">Data de vencimento crescente</p>${selected?detail(selected):""}<div class="list">${s.map(card).join("")||'<div class="card muted">Nenhum vencimento cadastrado.</div>'}</div>`;
@@ -170,7 +170,6 @@ function card(p){let d=days(p.date),w=isWork(p);return `<button class="item prod
 function openProduct(id){selectedProductId=id;page="expiry";render();window.scrollTo({top:0,behavior:"smooth"})}
 function add(){openProductModal()}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{page=b.dataset.p;selectedProductId=null;render()});
-$("enter").onclick=()=>{let e=$("err");e.classList.add("hidden");if($("u").value===demo.u&&$("p").value===demo.p){localStorage.setItem(K,"1");$("login").classList.add("hidden");$("app").classList.remove("hidden");render()}else{e.textContent="Usuário/senha incorreta";e.classList.remove("hidden");$("p").focus()}};
-$('out').onclick=()=>{localStorage.removeItem(K);$('app').classList.add('hidden');$('login').classList.remove('hidden')};
-if(localStorage.getItem(K)){$("app").classList.remove("hidden");render()}else{$("login").classList.remove("hidden")};
+// Autenticação, sessão e saída são controladas exclusivamente por cloud.js / Supabase Auth.
+// O aplicativo não mantém mais um login local ou credencial de demonstração.
 persist();
