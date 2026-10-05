@@ -1,9 +1,4 @@
-FRIOS PA V6 — PWA instalável
-- Novo ícone Frios PA
-- Manifest com id/scope/start_url
-- Service Worker incluído para cumprir os requisitos de instalação do Chrome
-- Cache versionado V6
-- Supabase/Auth preservados
-
-
-VERSAO OFICIAL DE TESTE: V7 - Produtos Cloud + remoção confirmada + PWA instalado
+FRIOS PA V9
+Atualização: ícone próprio para notificações Android/Web Push.
+O ícone principal do aplicativo permanece o mesmo.
+O notification-icon.png é monocromático e transparente para compatibilidade com o sistema Android.
