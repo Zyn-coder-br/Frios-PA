@@ -82,9 +82,11 @@ function render(){
   }else if(page==="products"){
     renderProducts();
   }else if(page==="alerts"){
-    $("content").innerHTML=`<h2>Notificações</h2><div class="card"><b>Resumo diário</b><p class="muted">Nesta V1, a configuração é local. Na próxima etapa será vinculada ao usuário e ao banco em nuvem.</p><input type="time" value="05:00"><br><br><button class="primary-btn" onclick="uiAlert('O horário de resumo foi salvo neste dispositivo.','Notificações')">Salvar configuração</button></div>`;
+    if(typeof renderNotificationsPage==='function') renderNotificationsPage();
+    else $("content").innerHTML=`<h2>Notificações</h2><div class="card"><b>Carregando notificações...</b></div>`;
   }else{
-    $("content").innerHTML=`<h2>Mais</h2><div class="card"><b>Conta</b><p class="muted">${demo.name}</p><p class="muted">Autenticação: Local V1</p><p class="muted">Banco em nuvem: próxima etapa</p></div>`;
+    const profile=window.FRIOS_PROFILE||{};
+    $("content").innerHTML=`<h2>Mais</h2><div class="card account-card"><div class="account-avatar">${escapeHtml((profile.name||profile.username||'R').slice(0,1).toUpperCase())}</div><div><b>${escapeHtml(profile.name||profile.username||'Usuário')}</b><p class="muted">${escapeHtml(profile.username||'')} · ${profile.role==='admin'?'Administrador':'Operador'}</p><p class="muted">Conta vinculada ao Frios PA Cloud</p></div></div><div class="card"><b>Segurança</b><p class="muted">Sua conta e suas configurações são individuais e ficam sincronizadas na nuvem.</p><button class="ghost-btn" onclick="openResetPassword()">Alterar senha</button></div>`;
   }
 }
 function renderProducts(){
@@ -228,4 +230,16 @@ function add(){openProductModal()}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{page=b.dataset.p;selectedProductId=null;render()});
 // Autenticação, sessão e saída são controladas exclusivamente por cloud.js / Supabase Auth.
 // O aplicativo não mantém mais um login local ou credencial de demonstração.
+function renderNotificationsPage(){
+  const ns=window.FRIOS_NOTIFICATION_SETTINGS||{enabled:true,daily_summary_enabled:true,daily_summary_time:'05:00',realtime_enabled:true};
+  const list=window.FRIOS_NOTIFICATIONS||[];
+  const unread=list.filter(n=>!n.read).length;
+  const time=escapeHtml(ns.daily_summary_time||'05:00');
+  $("content").innerHTML=`<div class="page-head"><div><h2>Notificações</h2><p class="muted">Avisos da equipe, vencimentos e mudanças nos produtos.</p></div>${unread?`<span class="count-badge">${unread} não lida(s)</span>`:''}</div><div class="card notification-settings-card"><div class="setting-row"><div><b>Notificações neste dispositivo</b><span class="muted">Permite avisos visuais do Frios PA enquanto o aplicativo estiver aberto.</span></div><button class="primary-btn" onclick="enableFriosNotifications()">${window.friosNotificationPermission==='granted'?'Ativadas':'Ativar'}</button></div><div class="setting-row"><div><b>Resumo diário</b><span class="muted">Cada usuário escolhe o próprio horário.</span></div><label class="time-setting"><input id="dailySummaryTime" type="time" value="${time}"></label></div><div class="setting-row"><div><b>Receber resumo diário</b><span class="muted">Produtos na janela de trabalho e próximos do vencimento.</span></div><input id="dailySummaryEnabled" class="toggle-check" type="checkbox" ${ns.daily_summary_enabled!==false?'checked':''}></div><div class="setting-row"><div><b>Atualizações em tempo real</b><span class="muted">Avisos quando produtos são cadastrados ou alterados pela equipe.</span></div><input id="realtimeEnabled" class="toggle-check" type="checkbox" ${ns.realtime_enabled!==false?'checked':''}></div><button class="primary-btn full-btn" onclick="saveFriosNotificationSettings()">Salvar configurações</button></div><div class="notification-list">${list.length?list.map(notificationCard).join(''):`<div class="card empty-card"><b>Nenhuma notificação ainda</b><span>Quando houver uma atualização importante, ela aparecerá aqui.</span></div>`}</div>`;
+}
+function notificationCard(n){return `<button class="notification-card ${n.read?'read':''}" onclick="openNotification('${escapeHtml(n.id)}')"><span class="notification-icon">${n.type==='vencimento'?'!':n.type==='produto_novo'?'+':'i'}</span><span class="notification-body"><b>${escapeHtml(n.title)}</b><span>${escapeHtml(n.message)}</span><small>${new Date(n.created_at).toLocaleString('pt-BR')}</small></span>${n.read?'':'<span class="notification-dot"></span>'}</button>`}
+function openNotification(id){if(typeof markFriosNotificationRead==='function')markFriosNotificationRead(id);const n=(window.FRIOS_NOTIFICATIONS||[]).find(x=>String(x.id)===String(id));if(n)uiAlert(n.message,n.title||'Notificação');}
+function enableFriosNotifications(){if(typeof requestFriosNotificationPermission==='function')requestFriosNotificationPermission();}
+function saveFriosNotificationSettings(){if(typeof cloudSaveNotificationSettings==='function')cloudSaveNotificationSettings();}
+
 persist();

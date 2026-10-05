@@ -5,6 +5,12 @@ const friosSB = window.supabase.createClient(FRIOS_SUPABASE_URL, FRIOS_SUPABASE_
 let friosUser = null;
 let friosProfile = null;
 let friosRealtime = null;
+let friosNotificationChannel = null;
+let friosNotificationSettings = null;
+let friosNotifications = [];
+window.FRIOS_NOTIFICATIONS = friosNotifications;
+window.FRIOS_NOTIFICATION_SETTINGS = friosNotificationSettings;
+window.friosNotificationPermission = ('Notification' in window) ? Notification.permission : 'unsupported';
 
 function cloudMapProduct(r){
   return {id:r.id,name:r.name,ean:r.ean||'',date:r.expiration_date,tag:Number(r.work_tag_days)||12,location:r.location||'Localização não informada',plu:Boolean(r.plu_identified),photo:r.photo_url||'',selected:false,brand:r.brand||''};
@@ -21,6 +27,53 @@ async function cloudProfile(){
   if(error){console.error(error); return null}
   friosProfile=data; window.FRIOS_PROFILE=data; return data;
 }
+async function cloudSignup(){
+  const name=$('signupName')?.value.trim();
+  const username=$('signupUsername')?.value.trim().toLowerCase().replace(/\s+/g,'');
+  const email=$('signupEmail')?.value.trim().toLowerCase();
+  const password=$('signupPassword')?.value||'';
+  const confirm=$('signupPasswordConfirm')?.value||'';
+  if(!name||!username||!email||!password||!confirm){uiAlert('Preencha nome, usuário, e-mail, senha e confirmação da senha.','Criar conta');return;}
+  if(!/^[a-z0-9._-]{3,30}$/.test(username)){uiAlert('O usuário deve ter de 3 a 30 caracteres e usar apenas letras, números, ponto, hífen ou sublinhado.','Criar conta');return;}
+  if(password.length<6){uiAlert('A senha precisa ter pelo menos 6 caracteres.','Criar conta');return;}
+  if(password!==confirm){uiAlert('A confirmação da senha não confere.','Criar conta');return;}
+  const btn=$('signupSubmit'); if(btn){btn.disabled=true;btn.textContent='Criando conta...';}
+  const {data,error}=await friosSB.auth.signUp({email,password,options:{data:{name,username}}});
+  if(btn){btn.disabled=false;btn.textContent='Criar conta';}
+  if(error){
+    const msg=error.message||'';
+    if(msg.toLowerCase().includes('already registered')){uiAlert('Este e-mail já possui uma conta no Frios PA.','Conta já cadastrada');}
+    else if(msg.toLowerCase().includes('username')){uiAlert('Esse usuário já está em uso. Escolha outro.','Usuário indisponível');}
+    else uiAlert(msg,'Não foi possível criar a conta');
+    return;
+  }
+  closeUiLayer();
+  if(data.session){
+    friosUser=data.user; await cloudProfile();
+    if(!friosProfile?.active){await friosSB.auth.signOut();uiAlert('A conta foi criada, mas ainda não está autorizada para acessar o aplicativo.','Conta criada');return;}
+    $('login').classList.add('hidden');$('app').classList.remove('hidden');await cloudLoadProducts();await cloudInitNotifications();cloudSubscribe();
+    uiToast('Conta criada com sucesso.','success');
+  }else{
+    uiAlert('Sua conta foi criada. Verifique o e-mail de confirmação para ativá-la e depois entre no Frios PA.','Conta criada');
+  }
+}
+function openSignup(){ensureUiLayer();const el=$('uiLayer');el.innerHTML=`<div class="ui-backdrop"><div class="ui-dialog signup-dialog"><div class="ui-dialog-head"><div><span class="eyebrow">NOVO ACESSO</span><h3>Criar minha conta</h3><p>Cadastre seus dados para usar o Frios PA.</p></div><button class="ui-close" onclick="closeUiLayer()">×</button></div><div class="signup-form"><label>Nome completo<input id="signupName" autocomplete="name" placeholder="Ex.: João da Silva"></label><label>Usuário<input id="signupUsername" autocomplete="username" placeholder="Ex.: joao.silva"></label><label>E-mail<input id="signupEmail" type="email" autocomplete="email" placeholder="seuemail@exemplo.com"></label><label>Senha<input id="signupPassword" type="password" autocomplete="new-password" placeholder="Mínimo de 6 caracteres"></label><label>Confirmar senha<input id="signupPasswordConfirm" type="password" autocomplete="new-password" placeholder="Repita sua senha"></label></div><div class="ui-dialog-actions"><button class="ghost-btn" onclick="closeUiLayer()">Cancelar</button><button id="signupSubmit" class="primary-btn" onclick="cloudSignup()">Criar conta</button></div></div></div>`;el.classList.remove('hidden');setTimeout(()=>$('signupName')?.focus(),40)}
+function openResetPassword(){ensureUiLayer();const current=($('u')?.value||'').trim();const el=$('uiLayer');el.innerHTML=`<div class="ui-backdrop"><div class="ui-dialog"><div class="ui-dialog-head"><div><span class="eyebrow">RECUPERAÇÃO</span><h3>Redefinir senha</h3><p>Informe o e-mail da sua conta para receber as instruções.</p></div><button class="ui-close" onclick="closeUiLayer()">×</button></div><label class="signup-field">E-mail<input id="resetEmail" type="email" value="${escapeHtml(current.includes('@')?current:'')}" placeholder="seuemail@exemplo.com"></label><div class="ui-dialog-actions"><button class="ghost-btn" onclick="closeUiLayer()">Cancelar</button><button class="primary-btn" onclick="sendFriosPasswordReset()">Enviar instruções</button></div></div></div>`;el.classList.remove('hidden')}
+async function sendFriosPasswordReset(){const email=$('resetEmail')?.value.trim();if(!email){uiAlert('Informe o e-mail da conta.','Redefinir senha');return;}const {error}=await friosSB.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error){uiAlert(error.message,'Redefinir senha');return;}closeUiLayer();uiAlert('Se o e-mail estiver cadastrado, você receberá as instruções para redefinir a senha.','Redefinir senha');}
+async function cloudLoadNotificationSettings(){if(!friosUser)return;const {data,error}=await friosSB.from('notification_settings').select('*').eq('user_id',friosUser.id).maybeSingle();if(error){console.warn(error);return;}friosNotificationSettings=data||{user_id:friosUser.id,enabled:true,daily_summary_enabled:true,daily_summary_time:'05:00',realtime_enabled:true};window.FRIOS_NOTIFICATION_SETTINGS=friosNotificationSettings;}
+async function cloudLoadNotifications(){if(!friosUser)return;const {data,error}=await friosSB.from('notifications').select('*').eq('user_id',friosUser.id).order('created_at',{ascending:false}).limit(50);if(error){console.warn(error);return;}friosNotifications=data||[];window.FRIOS_NOTIFICATIONS=friosNotifications;if(typeof render==='function'&&page==='alerts')render();}
+async function cloudSaveNotificationSettings(){if(!friosUser)return;const daily=$('dailySummaryEnabled')?.checked!==false; const realtime=$('realtimeEnabled')?.checked!==false; const payload={enabled:daily||realtime,daily_summary_enabled:daily,daily_summary_time:$('dailySummaryTime')?.value||'05:00',realtime_enabled:realtime};const {data,error}=await friosSB.from('notification_settings').upsert({user_id:friosUser.id,...payload},{onConflict:'user_id'}).select().single();if(error){uiAlert(error.message,'Notificações');return;}friosNotificationSettings=data;window.FRIOS_NOTIFICATION_SETTINGS=data;await maybeGenerateDailySummary();uiToast('Configurações de notificação salvas.','success');}
+async function markFriosNotificationRead(id){const {error}=await friosSB.from('notifications').update({read:true}).eq('id',id).eq('user_id',friosUser.id);if(!error){const n=friosNotifications.find(x=>String(x.id)===String(id));if(n)n.read=true;window.FRIOS_NOTIFICATIONS=friosNotifications;if(typeof render==='function'&&page==='alerts')render();}}
+async function requestFriosNotificationPermission(){if(!('Notification' in window)){uiAlert('Este dispositivo não disponibilizou notificações do navegador.','Notificações');return;}const result=await Notification.requestPermission();window.friosNotificationPermission=result;if(result==='granted'){uiToast('Notificações ativadas neste dispositivo.','success');await showBrowserNotification('Frios PA','As notificações do aplicativo estão ativadas.');}else uiAlert('As notificações continuam desativadas. Você pode permitir nas configurações do navegador/dispositivo.','Notificações');if(typeof render==='function'&&page==='alerts')render();}
+async function showBrowserNotification(title,message){if(window.friosNotificationPermission!=='granted')return;try{if('serviceWorker' in navigator){const reg=await navigator.serviceWorker.ready;await reg.showNotification(title,{body:message,icon:'icon-192.png',badge:'icon-192.png',tag:'frios-pa-notification'});}else new Notification(title,{body:message,icon:'icon-192.png'});}catch(e){console.warn(e)}}
+async function maybeGenerateDailySummary(){
+  if(!friosUser||!friosNotificationSettings?.daily_summary_enabled)return;
+  const {error}=await friosSB.rpc('frios_generate_daily_summary_for_user');
+  if(error){console.warn('[FRIOS PA] Não foi possível gerar o resumo diário:',error);return;}
+  await cloudLoadNotifications();
+}
+async function cloudInitNotifications(){await cloudLoadNotificationSettings();await cloudLoadNotifications();await maybeGenerateDailySummary();if(friosNotificationChannel)await friosSB.removeChannel(friosNotificationChannel);friosNotificationChannel=friosSB.channel('frios-notifications-live').on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${friosUser.id}`},async payload=>{const n=payload.new;friosNotifications=[n,...friosNotifications.filter(x=>x.id!==n.id)].slice(0,50);window.FRIOS_NOTIFICATIONS=friosNotifications;if(typeof render==='function'&&page==='alerts')render();if(friosNotificationSettings?.realtime_enabled!==false){uiToast(n.title,'success');if(window.friosNotificationPermission==='granted')showBrowserNotification(n.title,n.message);}}).subscribe();}
+
 async function cloudLogin(){
   const err=$('err'); err.classList.add('hidden');
   let login=$('u').value.trim(); const password=$('p').value;
@@ -35,9 +88,9 @@ async function cloudLogin(){
   friosUser=data.user; await cloudProfile();
   if(!friosProfile || !friosProfile.active){await friosSB.auth.signOut();err.textContent='Usuário desativado';err.classList.remove('hidden');return}
   $('login').classList.add('hidden'); $('app').classList.remove('hidden');
-  await cloudLoadProducts(); cloudSubscribe();
+  await cloudLoadProducts(); await cloudInitNotifications(); cloudSubscribe();
 }
-async function cloudLogout(){await friosSB.auth.signOut();friosUser=null;friosProfile=null;if(friosRealtime)await friosSB.removeChannel(friosRealtime);$('app').classList.add('hidden');$('login').classList.remove('hidden');}
+async function cloudLogout(){await friosSB.auth.signOut();friosUser=null;friosProfile=null;if(friosRealtime)await friosSB.removeChannel(friosRealtime);if(friosNotificationChannel)await friosSB.removeChannel(friosNotificationChannel);$('app').classList.add('hidden');$('login').classList.remove('hidden');}
 function cloudSubscribe(){
   if(friosRealtime) friosSB.removeChannel(friosRealtime);
   friosRealtime=friosSB.channel('frios-products-live')
@@ -114,7 +167,7 @@ async function cloudMarkPlu(value){
 // Substitui o comportamento local somente quando a página estiver carregada.
 window.addEventListener('load', async ()=>{
   $('u').placeholder='E-mail ou usuário';
-  $('enter').onclick=cloudLogin;
+  $('enter').onclick=cloudLogin; $('openSignup').onclick=openSignup; $('openReset').onclick=openResetPassword;
   $('out').onclick=cloudLogout;
   $('app').classList.add('hidden');
   $('login').classList.remove('hidden');
@@ -123,7 +176,7 @@ window.addEventListener('load', async ()=>{
     friosUser=data.session.user; await cloudProfile();
     if(friosProfile?.active){
       $('login').classList.add('hidden');$('app').classList.remove('hidden');
-      await cloudLoadProducts();cloudSubscribe();
+      await cloudLoadProducts();await cloudInitNotifications();cloudSubscribe();
     } else {
       await friosSB.auth.signOut();
       const err=$('err'); err.textContent='Perfil não autorizado ou desativado.'; err.classList.remove('hidden');
