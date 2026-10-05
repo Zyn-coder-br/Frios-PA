@@ -1,11 +1,9 @@
-FRIOS PA — Cloud Auth V4
+FRIOS PA V6 — PWA instalável
+- Novo ícone Frios PA
+- Manifest com id/scope/start_url
+- Service Worker incluído para cumprir os requisitos de instalação do Chrome
+- Cache versionado V6
+- Supabase/Auth preservados
 
-Versão com cache bust, janelas internas padronizadas, validação de EAN e exclusão em nuvem.
-Supabase configurado para o projeto Frios-PA.
 
-
-FRIOS PA V5
-- Novo icone principal azul do Frios PA em PNG 192/512.
-- Manifest atualizado para o novo icone.
-- Cache bust V5.
-- Cloud SQL mestre: Frios_PA_Cloud_Base_Completa_V2.sql (arquivo separado).
+VERSAO OFICIAL DE TESTE: V7 - Produtos Cloud + remoção confirmada + PWA instalado

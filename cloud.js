@@ -84,15 +84,19 @@ async function cloudSaveProduct(){
 async function cloudRemoveSelected(){
   const ids=products.filter(p=>p.selected).map(p=>p.id); if(!ids.length){uiAlert('Marque pelo menos um produto antes de remover.','Remover produtos');return;}
   if(!await uiConfirm(`Você está prestes a remover ${ids.length} produto(s). Essa ação não poderá ser desfeita.`, 'Remover produtos')) return;
-  const {error}=await friosSB.from('products').delete().in('id',ids);
+  const {data:deleted,error}=await friosSB.from('products').delete().in('id',ids).select('id');
   if(error){
     console.error('[FRIOS PA] Erro ao remover:',error);
     const code=error.code||'ERRO';
-    uiAlert(`O banco de dados recusou a remoção do produto.
-
-Código: ${code}
-
-Se você acabou de atualizar o SQL de permissões, recarregue o aplicativo e tente novamente.`, 'Não foi possível remover');
+    const detail=error.message||'O banco recusou a operação.';
+    uiAlert(`Não foi possível remover o produto agora.\n\nCódigo: ${code}\n${detail}`, 'Remoção não concluída');
+    return;
+  }
+  const deletedIds=(deleted||[]).map(r=>r.id);
+  if(deletedIds.length!==ids.length){
+    console.warn('[FRIOS PA] Remoção parcial', {requested:ids, deleted:deletedIds});
+    await cloudLoadProducts();
+    uiAlert(`A nuvem confirmou a remoção de ${deletedIds.length} de ${ids.length} produto(s). Os itens restantes continuam protegidos e foram mantidos na lista.`, 'Remoção parcial');
     return;
   }
   products=products.filter(p=>!ids.includes(p.id));
